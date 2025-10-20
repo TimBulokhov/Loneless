@@ -30,14 +30,19 @@ struct VoiceMessageView: View {
                             showTranscription.toggle()
                             // НЕ воспроизводим аудио при нажатии на транскрипцию
                         }) {
-                            Image(systemName: "text.bubble")
-                                .font(.system(size: 16))
-                                .foregroundColor(.blue)
+                            HStack(spacing: 4) {
+                                Image(systemName: "text.bubble")
+                                    .font(.system(size: 14))
+                                Text("Текст")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.blue)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.2))
+                            .cornerRadius(8)
                         }
                         .buttonStyle(PlainButtonStyle()) // Убираем стандартное поведение кнопки
-                        .onTapGesture {
-                            showTranscription.toggle()
-                        }
                     }
                     
                     // Длительность
@@ -46,20 +51,20 @@ struct VoiceMessageView: View {
                         .foregroundColor(.secondary)
                     
                     // Визуализация аудио (компактная)
-                    HStack(spacing: 2) {
-                        ForEach(0..<10, id: \.self) { index in
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(Color.blue.opacity(0.6))
-                                .frame(width: 2, height: CGFloat.random(in: 4...16))
+                    HStack(spacing: 3) {
+                        ForEach(0..<15, id: \.self) { index in
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(Color.blue.opacity(0.7))
+                                .frame(width: 3, height: CGFloat.random(in: 6...20))
                                 .animation(.easeInOut(duration: 0.3).delay(Double(index) * 0.1), value: isPlaying)
                         }
                     }
-                    .frame(height: 16)
+                    .frame(height: 20)
                     
                     // Кнопка воспроизведения
                     Button(action: togglePlayback) {
                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: 24))
                             .foregroundColor(.blue)
                     }
                     .buttonStyle(PlainButtonStyle()) // Убираем стандартное поведение кнопки
@@ -76,15 +81,15 @@ struct VoiceMessageView: View {
                     }
                     
                     // Визуализация аудио (упрощенная)
-                    HStack(spacing: 2) {
-                        ForEach(0..<20, id: \.self) { index in
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(Color.blue.opacity(0.6))
-                                .frame(width: 3, height: CGFloat.random(in: 4...20))
+                    HStack(spacing: 3) {
+                        ForEach(0..<25, id: \.self) { index in
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(Color.blue.opacity(0.7))
+                                .frame(width: 4, height: CGFloat.random(in: 6...24))
                                 .animation(.easeInOut(duration: 0.3).delay(Double(index) * 0.1), value: isPlaying)
                         }
                     }
-                    .frame(height: 20)
+                    .frame(height: 24)
                     
                     Spacer()
                     
@@ -111,7 +116,11 @@ struct VoiceMessageView: View {
             if showTranscription, let transcription = attachment.transcription {
                 Text(transcription)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
                     .padding(.top, 4)
             }
         }

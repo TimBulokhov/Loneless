@@ -9,8 +9,13 @@ import Foundation
 import AVFoundation
 
 final class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
+    static let shared = AudioRecorder()
     @Published var isRecording: Bool = false
     private var recorder: AVAudioRecorder?
+    
+    private override init() {
+        super.init()
+    }
 
     func start() throws {
         let session = AVAudioSession.sharedInstance()

@@ -300,8 +300,19 @@ final class DialogStore: ObservableObject {
     func lastSeenText() -> String {
         guard let id = currentDialogId, let dialog = dialogs.first(where: { $0.id == id }) else { return "" }
         let mins = Int(Date().timeIntervalSince(dialog.lastSeen) / 60)
-        if mins <= 0 { return "В сети" }
-        return "Был(а) в сети \(mins) минут назад"
+        
+        // Рандомный статус онлайн для имитации живой девушки
+        if mins <= 0 { 
+            let onlineStatuses = ["В сети","В сети"]
+            return onlineStatuses.randomElement() ?? "В сети"
+        }
+        
+        // Правильные склонения для оффлайн статусов
+        let minuteWord = mins == 1 ? "минуту" : (mins >= 2 && mins <= 4 ? "минуты" : "минут")
+        let offlineStatuses = [
+            "Был(а) в сети \(mins) \(minuteWord) назад"
+        ]
+        return offlineStatuses.randomElement() ?? "Был(а) в сети \(mins) \(minuteWord) назад"
     }
 
     func renameCurrent(to title: String) {
