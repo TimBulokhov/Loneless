@@ -56,8 +56,14 @@ struct ContentView: View {
             .sheet(isPresented: $viewModel.isImagePickerPresented) {
                 ImagePicker { data, mime in
                     if let data { 
-                        Task { await viewModel.handleImagePicked(data: data, mime: mime, store: dialogStore) } 
+                        viewModel.handleImagePicked(data: data, mime: mime)
                     }
+                }
+            }
+            .sheet(isPresented: $viewModel.isImageViewerPresented) {
+                if let imageData = viewModel.selectedImageForViewing,
+                   let uiImage = UIImage(data: imageData) {
+                    ImageViewer(image: uiImage)
                 }
             }
             .onAppear {
@@ -96,7 +102,9 @@ struct ContentView: View {
             ForEach(groupedMessages(), id: \.date) { section in
                 Section(header: DateHeaderView(date: section.date)) {
                     ForEach(section.items) { message in
-                        MessageRowView(message: message)
+                        MessageRowView(message: message) { imageData in
+                            viewModel.viewImage(imageData)
+                        }
                     }
                 }
             }
@@ -150,6 +158,11 @@ struct ContentView: View {
     // MARK: - Input View
     private var inputView: some View {
         VStack(spacing: 0) {
+                // Превью выбранного изображения
+                if let _ = viewModel.selectedImage {
+                    selectedImagePreview
+                }
+            
             // Основной интерфейс ввода
             HStack {
                 // Переключатель озвучивания
@@ -189,15 +202,17 @@ struct ContentView: View {
                         
                         Spacer()
                         
-                        // Длительность
-                        Text(formatDuration(viewModel.recordingDuration))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            // Длительность
+                            Text(formatDuration(viewModel.currentRecordingDuration))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         
                         // Кнопка удаления (крестик)
                         Button(action: {
                             viewModel.currentRecording = nil
                             viewModel.recordingDuration = 0
+                            viewModel.currentRecordingDuration = 0
+                            viewModel.savedRecordingDuration = nil
                         }) {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(.red)
@@ -215,19 +230,19 @@ struct ContentView: View {
                         .disabled(viewModel.isThinking)
                 }
                 
-                // Кнопка записи
-                Button {
-                    if viewModel.isRecording {
-                        viewModel.stopRecording()
-                    } else {
-                        viewModel.startRecording()
+                    // Кнопка записи
+                    Button {
+                        if viewModel.isRecording {
+                            viewModel.stopRecording()
+                        } else {
+                            viewModel.startRecording()
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                            .foregroundColor(viewModel.isRecording ? .red : .blue)
+                            .font(.system(size: 32))
                     }
-                } label: {
-                    Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                        .foregroundColor(viewModel.isRecording ? .red : .blue)
-                        .font(.system(size: 32))
-                }
-                .disabled(viewModel.isThinking)
+                    .disabled(viewModel.isThinking || viewModel.currentRecording != nil)
                 
                 // Кнопки действий
                 if !viewModel.isRecording {
@@ -238,20 +253,56 @@ struct ContentView: View {
                     }
                     .disabled(viewModel.isThinking)
                     
-                    Button(action: { 
-                        if viewModel.currentRecording != nil {
-                            viewModel.sendCurrentRecording(store: dialogStore)
-                        } else {
-                            viewModel.sendMessage(store: dialogStore)
+                        Button(action: { 
+                            if viewModel.currentRecording != nil && viewModel.selectedImage != nil {
+                                // Отправляем и голосовое сообщение, и изображение
+                                Task { await viewModel.sendCurrentRecordingWithImage(store: dialogStore) }
+                            } else if viewModel.currentRecording != nil {
+                                viewModel.sendCurrentRecording(store: dialogStore)
+                            } else if viewModel.selectedImage != nil {
+                                Task { await viewModel.sendSelectedImage(store: dialogStore) }
+                            } else {
+                                viewModel.sendMessage(store: dialogStore)
+                            }
+                        }) {
+                            Image(systemName: "paperplane.fill")
                         }
-                    }) {
-                        Image(systemName: "paperplane.fill")
-                    }
-                    .disabled((viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.currentRecording == nil) || viewModel.isThinking)
+                        .disabled((viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.currentRecording == nil && viewModel.selectedImage == nil) || viewModel.isThinking)
                 }
             }
             .padding()
         }
+    }
+    
+    // MARK: - Selected Images Preview
+    private var selectedImagePreview: some View {
+        HStack {
+            if let image = viewModel.selectedImage {
+                ZStack(alignment: .topTrailing) {
+                    Image(uiImage: UIImage(data: image.data) ?? UIImage())
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 80, height: 80)
+                        .clipped()
+                        .cornerRadius(8)
+                        // Убираем просмотр для прикрепленных изображений
+                    
+                    // Кнопка удаления (как у голосовых сообщений)
+                    Button(action: {
+                        viewModel.removeSelectedImage()
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                            .font(.system(size: 16))
+                    }
+                    .offset(x: 6, y: -6)
+                }
+            }
+            Spacer() // Толкаем картинку влево
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.gray.opacity(0.1))
     }
     
     // MARK: - Recording Interface

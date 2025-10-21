@@ -284,6 +284,16 @@ final class DialogStore: ObservableObject {
             save()
         }
     }
+    
+    func updateLastUserMessage(_ newText: String, attachments: [ChatAttachment]) {
+        guard let id = currentDialogId, let dIdx = dialogs.firstIndex(where: { $0.id == id }) else { return }
+        if let idx = dialogs[dIdx].messages.lastIndex(where: { $0.role == .user }) {
+            let oldMessage = dialogs[dIdx].messages[idx]
+            let newMessage = ChatMessage(id: oldMessage.id, role: oldMessage.role, text: newText, createdAt: oldMessage.createdAt, attachments: attachments, readAt: oldMessage.readAt)
+            dialogs[dIdx].messages[idx] = newMessage
+            save()
+        }
+    }
 
     func updateLastSeen(_ date: Date = Date()) {
         guard let id = currentDialogId, let dIdx = dialogs.firstIndex(where: { $0.id == id }) else { return }

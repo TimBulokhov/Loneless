@@ -11,6 +11,12 @@ import Combine
 struct MessageRowView: View {
     let message: ChatMessage
     @State private var avatar: UIImage?
+    let onImageTap: ((Data) -> Void)?
+    
+    init(message: ChatMessage, onImageTap: ((Data) -> Void)? = nil) {
+        self.message = message
+        self.onImageTap = onImageTap
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -33,12 +39,31 @@ struct MessageRowView: View {
                         switch att.kind {
                         case .image:
                             if let ui = UIImage(data: att.data) {
-                                Image(uiImage: ui)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(maxWidth: 220, maxHeight: 220)
-                                    .clipped()
-                                    .cornerRadius(10)
+                                HStack {
+                                    if message.role == .assistant {
+                                        Image(uiImage: ui)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(maxWidth: 220, maxHeight: 220)
+                                            .clipped()
+                                            .cornerRadius(10)
+                                            .onTapGesture {
+                                                onImageTap?(att.data)
+                                            }
+                                        Spacer() // Толкаем картинку влево для бота
+                                    } else {
+                                        Spacer() // Толкаем картинку вправо для пользователя
+                                        Image(uiImage: ui)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(maxWidth: 220, maxHeight: 220)
+                                            .clipped()
+                                            .cornerRadius(10)
+                                            .onTapGesture {
+                                                onImageTap?(att.data)
+                                            }
+                                    }
+                                }
                             }
                         case .audio:
                             VoiceMessageView(attachment: att, isUserMessage: message.role == .user)
