@@ -65,6 +65,7 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
     
     // Random messages
     private var isRandomMessage: Bool = false
+    private var isRandomMessagesStarted: Bool = false
 
     init(aiService: AIService = AIService()) {
         self.aiService = aiService
@@ -94,7 +95,7 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
         // Инициализация завершена
         
         seedGreeting()
-        startRandomMessages()
+        // startRandomMessages() вызывается в ContentView.onAppear
     }
 
     func sendMessage() {
@@ -928,13 +929,32 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
     }
     
     func startRandomMessages() {
+        // Проверяем что рандомные сообщения еще не запущены
+        guard !isRandomMessagesStarted else {
+            print("⚠️ Random messages already started, skipping")
+            return
+        }
+        
+        isRandomMessagesStarted = true
+        print("✅ Starting random messages task")
+        
         Task { @MainActor in
-            // Ждем 10 минут перед первым рандомным сообщением
-            try? await Task.sleep(nanoseconds: UInt64(1 * 60 * 1_000_000_000))
+            // Ждем 30 секунд перед первым рандомным сообщением (для теста)
+            let firstDelay = 30
+            print("⏰ First random message will arrive in \(firstDelay) seconds")
+            try? await Task.sleep(nanoseconds: UInt64(firstDelay * 1_000_000_000))
             
+            // Отправляем первое сообщение
+            if let store = dialogStore, !store.messagesOfCurrent().isEmpty {
+                print("🎲 Sending first random message...")
+                await sendRandomMessage()
+            }
+            
+            // Цикл для последующих сообщений
             while true {
-                // Рандомная пауза 2-5 минут для тестирования (в продакшене можно увеличить до 60-180 минут)
+                // Рандомная пауза 60-180 минут
                 let delayMinutes = Int.random(in: 60...180)
+                print("⏰ Next random message will arrive in \(delayMinutes) minutes")
                 try? await Task.sleep(nanoseconds: UInt64(delayMinutes * 60 * 1_000_000_000))
                 
                 // Проверяем, что диалог активен и есть сообщения
@@ -950,17 +970,13 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
     }
 
     private func sendRandomMessage() async {
-        guard !apiKey.isEmpty || !Secrets.geminiAPIKeys.isEmpty else { 
+        guard !Secrets.geminiAPIKeys.isEmpty else { 
             print("❌ Random message failed: no API key")
             return 
         }
         
         // Устанавливаем флаг рандомного сообщения
         isRandomMessage = true
-        
-        // Получаем контекст последних сообщений из текущего диалога (только 3 последних)
-        let recentMessages = dialogStore?.messagesOfCurrent().suffix(3) ?? []
-        print("📝 Recent messages count: \(recentMessages.count)")
         
         let randomPrompts = [
             // Милые и игривые
@@ -1004,10 +1020,20 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
             operation: { currentKey, currentModel in
                 print("🎲 Using key: \(String(currentKey.prefix(8)))... and model: \(currentModel) for random message")
                 
-            // Создаем простой системный промпт только с рандомным сообщением
-                let simpleSystemPrompt = "\(self.systemPrompt)\n\n\(randomPrompt)"
-                let config = AIService.Config(apiKey: currentKey, model: currentModel, systemPrompt: simpleSystemPrompt, baseURL: "https://generativelanguage.googleapis.com/v1beta")
-                return try await self.aiService.send(messages: recentMessages, config: config)
+                // Создаем полный системный промпт с инструкцией для рандомного сообщения
+                let fullSystemPrompt = """
+                \(self.systemPrompt)
+                
+                ВАЖНО: Это рандомное сообщение. Ты первая пишешь своему парню, он тебе ничего не писал.
+                
+                \(randomPrompt)
+                
+                Отвечай ТОЛЬКО ОДНИМ коротким сообщением от 5 до 20 слов. БЕЗ пояснений, БЕЗ продолжений, БЕЗ вариантов. Просто одно сообщение.
+                """
+                
+                // Отправляем ПУСТОЙ массив сообщений - это первое сообщение от бота!
+                let config = AIService.Config(apiKey: currentKey, model: currentModel, systemPrompt: fullSystemPrompt, baseURL: "https://generativelanguage.googleapis.com/v1beta")
+                return try await self.aiService.send(messages: [], config: config)
             },
             onSuccess: { reply in
                 print("✅ Random message received: \(reply.prefix(50))...")
@@ -1015,7 +1041,22 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
             await MainActor.run {
                 // Добавляем сообщение в текущий диалог через store
                     if let store = self.dialogStore {
-                        let cleanedReply = self.cleanResponseText(reply)
+                        // Очищаем ответ от форматирования
+                        var cleanedReply = self.cleanResponseText(reply)
+                        
+                        // Убираем кавычки в начале и конце (если есть)
+                        if cleanedReply.hasPrefix("\"") && cleanedReply.hasSuffix("\"") {
+                            cleanedReply = String(cleanedReply.dropFirst().dropLast())
+                        }
+                        
+                        // Убираем "Сообщение:" или похожие префиксы
+                        let prefixes = ["Сообщение:", "Текст:", "Ответ:"]
+                        for prefix in prefixes {
+                            if cleanedReply.hasPrefix(prefix) {
+                                cleanedReply = String(cleanedReply.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                        }
+                        
                         store.appendMessage(ChatMessage(role: .assistant, text: cleanedReply))
                     // Отправляем уведомление
                         self.sendNotification(title: store.currentDialogTitle(), body: cleanedReply)
@@ -1127,7 +1168,7 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
                     }
                 }
                 
-                // Уведомление для vision ответа
+            // Уведомление для vision ответа
                 self.sendNotification(title: store.currentDialogTitle(), body: reply)
             },
             onError: { error in
@@ -1193,6 +1234,68 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
         content.sound = .default
         content.categoryIdentifier = "MESSAGE_CATEGORY"
         
+        // Добавляем аватар собеседника из ChatDialog
+        if let dialog = dialogStore?.currentDialog() {
+            print("📱 Dialog found: \(dialog.title)")
+            
+            // Используем аватар диалога или дефолтное розовое сердечко
+            var avatarImage: UIImage?
+            
+            if let avatarData = dialog.avatarData {
+                print("🖼️ Avatar data found: \(avatarData.count) bytes")
+                avatarImage = UIImage(data: avatarData)
+                if avatarImage != nil {
+                    print("✅ Avatar image created from dialog")
+                }
+            }
+            
+            // Если нет аватара диалога - создаем дефолтное адаптивное сердечко
+            if avatarImage == nil {
+                print("💗 No dialog avatar, creating default adaptive heart")
+                // Получаем текущую тему
+                let traitCollection = UITraitCollection.current
+                if let defaultAvatarData = ChatDialog.createDefaultAvatar(for: traitCollection) {
+                    avatarImage = UIImage(data: defaultAvatarData)
+                    print("✅ Default avatar created (dark mode: \(traitCollection.userInterfaceStyle == .dark))")
+                }
+            }
+            
+            if let avatar = avatarImage {
+                print("✅ Using avatar: \(avatar.size)")
+                
+                // Сохраняем изображение во временный файл
+                if let tempURL = saveImageToTempFile(image: avatar) {
+                    print("💾 Saved to temp file: \(tempURL)")
+                    
+                    do {
+                        // Для локальных уведомлений iOS показывает изображение справа
+                        // как preview если указать правильные опции
+                        let options: [String: Any] = [
+                            UNNotificationAttachmentOptionsTypeHintKey: "public.png"
+                        ]
+                        
+                        let attachment = try UNNotificationAttachment(
+                            identifier: "avatar",
+                            url: tempURL,
+                            options: options
+                        )
+                        content.attachments = [attachment]
+                        print("✅ Notification attachment created successfully")
+                        print("📎 Attachment: \(attachment)")
+                    } catch {
+                        print("❌ Failed to create notification attachment: \(error)")
+                        print("🔍 Error details: \(error.localizedDescription)")
+                    }
+                } else {
+                    print("❌ Failed to save avatar to temp file")
+                }
+            } else {
+                print("❌ Failed to create any avatar image")
+            }
+        } else {
+            print("❌ No dialog found")
+        }
+        
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         
         UNUserNotificationCenter.current().add(request) { error in
@@ -1201,6 +1304,28 @@ class ChatViewModel: NSObject, ObservableObject, @preconcurrency AVAudioPlayerDe
             } else {
                 print("✅ Notification sent: \(title)")
             }
+        }
+    }
+    
+    private func saveImageToTempFile(image: UIImage) -> URL? {
+        // Сохраняем как PNG для лучшего качества аватарки
+        guard let data = image.pngData() else {
+            print("❌ Failed to convert image to PNG")
+            return nil
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileName = UUID().uuidString + ".png"
+        let fileURL = tempDir.appendingPathComponent(fileName)
+        
+        do {
+            try data.write(to: fileURL)
+            print("💾 Image saved: \(fileURL.path)")
+            print("📏 File size: \(data.count) bytes")
+            return fileURL
+        } catch {
+            print("❌ Failed to save image to temp file: \(error)")
+            return nil
         }
     }
 

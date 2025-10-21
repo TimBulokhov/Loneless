@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 enum ChatRole: String, Codable {
     case user
@@ -119,7 +120,65 @@ struct ChatDialog: Identifiable, Codable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.messages = messages
+        
+        // Не создаем аватар по умолчанию - пользователь может установить свой
         self.avatarData = nil
+    }
+    
+    static func createDefaultAvatar(for traitCollection: UITraitCollection? = nil) -> Data? {
+        let size: CGFloat = 200
+        
+        // Определяем тему (dark или light)
+        let isDarkMode = traitCollection?.userInterfaceStyle == .dark
+        
+        // АДАПТИВНАЯ ИКОНКА под темную/светлую тему
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        
+        let image = renderer.image { ctx in
+            let context = ctx.cgContext
+            
+            // Фон: черный в dark mode, белый в light mode
+            if isDarkMode {
+                context.setFillColor(UIColor.black.cgColor)
+            } else {
+                context.setFillColor(UIColor.white.cgColor)
+            }
+            context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+            
+            // РОЗОВЫЙ КРУГ #FF3B63 (одинаковый в обеих темах)
+            let pinkColor = UIColor(red: 1.0, green: 0.231, blue: 0.388, alpha: 1.0)
+            context.setFillColor(pinkColor.cgColor)
+            
+            let center = size / 2
+            let radius = size * 0.4
+            
+            let circleRect = CGRect(
+                x: center - radius,
+                y: center - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+            context.fillEllipse(in: circleRect)
+            
+            // СЕРДЦЕ: белое в light mode, черное в dark mode
+            let heartColor: UIColor = isDarkMode ? .black : .white
+            let symbolConfig = UIImage.SymbolConfiguration(pointSize: radius * 1.4, weight: .semibold)
+            if let heartSymbol = UIImage(systemName: "heart.fill", withConfiguration: symbolConfig) {
+                let coloredHeart = heartSymbol.withTintColor(heartColor, renderingMode: .alwaysOriginal)
+                
+                let heartSize = radius * 1.4
+                let heartRect = CGRect(
+                    x: center - heartSize * 0.5,
+                    y: center - heartSize * 0.43,
+                    width: heartSize,
+                    height: heartSize
+                )
+                
+                coloredHeart.draw(in: heartRect)
+            }
+        }
+        
+        return image.pngData()
     }
 }
 
